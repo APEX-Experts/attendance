@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Employee {
+  id            String       @id @default(cuid())
+  employeeCode  String       @unique
+  name          String
+  email         String       @unique
+  password      String
+  salary        Float
+  refLatitude   Float?
+  refLongitude  Float?
+  locationSet   Boolean      @default(false)
+  locationSetAt DateTime?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  attendance    Attendance[]
+}
+
+model Attendance {
+  id         String         @id @default(cuid())
+  employeeId String
+  employee   Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       AttendanceType
+  latitude   Float
+  longitude  Float
+  distance   Float
+  isValid    Boolean
+  ipAddress  String?
+  userAgent  String?
+  date       String
+  timestamp  DateTime       @default(now())
+
+  @@unique([employeeId, date, type])
+  @@index([employeeId, date])
+  @@index([date])
+}
+
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
