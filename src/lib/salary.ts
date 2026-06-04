@@ -75,8 +75,9 @@ export function buildMonthlyReport(params: {
   const monthEnd = endOfMonth(monthStart)
   const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd })
 
-  const byDate = new Map<string, typeof attendance>()
-  for (const rec of attendance) {
+  const validAttendance = attendance.filter(rec => rec.isValid)
+  const byDate = new Map<string, typeof validAttendance>()
+  for (const rec of validAttendance) {
     const list = byDate.get(rec.date) ?? []
     list.push(rec)
     byDate.set(rec.date, list)

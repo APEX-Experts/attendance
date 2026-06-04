@@ -28,7 +28,7 @@ export default async function EmployeeReportPage({ params, searchParams }: PageP
   const end = `${year}-${String(month).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
 
   const attendance: Attendance[] = await prisma.attendance.findMany({
-    where: { employeeId: params.id, date: { gte: start, lte: end } },
+    where: { employeeId: params.id, date: { gte: start, lte: end }, isValid: true },
     orderBy: { timestamp: 'asc' }
   })
 

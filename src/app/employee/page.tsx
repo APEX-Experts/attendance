@@ -24,7 +24,7 @@ export default async function EmployeeDashboard() {
   const today = formatInTimeZone(new Date(), settings.timezone, 'yyyy-MM-dd')
 
   const todayRecords = await prisma.attendance.findMany({
-    where: { employeeId, date: today },
+    where: { employeeId, date: today, isValid: true },
     orderBy: { timestamp: 'asc' }
   })
 

@@ -35,51 +35,64 @@ export async function POST(req: NextRequest) {
   if (type === 'CHECK_OUT') {
     const checkedInIds = new Set(
       (await prisma.attendance.findMany({
-        where: { date, type: 'CHECK_IN' },
+        where: { date, type: 'CHECK_IN', isValid: true },
         select: { employeeId: true }
       })).map(r => r.employeeId)
     )
     targets = employees.filter(e => checkedInIds.has(e.id))
   }
 
-  // Skip employees who already have the record type for that date
-  const existingIds = new Set(
-    (await prisma.attendance.findMany({
-      where: { date, type, employeeId: { in: targets.map(e => e.id) } },
-      select: { employeeId: true }
-    })).map(r => r.employeeId)
+  const existingRecords = await prisma.attendance.findMany({
+    where: { date, type, employeeId: { in: targets.map(e => e.id) } },
+    select: { id: true, employeeId: true, isValid: true }
+  })
+
+  const validExistingIds = new Set(
+    existingRecords.filter(r => r.isValid).map(r => r.employeeId)
+  )
+  const invalidExistingByEmployee = new Map(
+    existingRecords.filter(r => !r.isValid).map(r => [r.employeeId, r.id])
   )
 
-  const toCreate = targets.filter(e => !existingIds.has(e.id))
+  const toUpdate = targets.filter(e => invalidExistingByEmployee.has(e.id))
+  const toCreate = targets.filter(e => !validExistingIds.has(e.id) && !invalidExistingByEmployee.has(e.id))
 
-  if (toCreate.length === 0) {
+  if (toCreate.length === 0 && toUpdate.length === 0) {
     return NextResponse.json({
       created: 0,
-      skipped: existingIds.size,
+      skipped: validExistingIds.size,
       message: `All employees already have ${type === 'CHECK_IN' ? 'check-in' : 'check-out'} for ${date}.`
     })
   }
 
-  await prisma.attendance.createMany({
-    data: toCreate.map(e => ({
-      employeeId: e.id,
-      type,
-      date,
-      timestamp,
-      latitude: e.refLatitude ?? 0,
-      longitude: e.refLongitude ?? 0,
-      distance: 0,
-      isValid: true,
-      ipAddress: 'admin-bulk',
-      userAgent: `admin-bulk:${session.user.id}`
-    }))
+  const dataFor = (e: { id: string; refLatitude: number | null; refLongitude: number | null }) => ({
+    employeeId: e.id,
+    type,
+    date,
+    timestamp,
+    latitude: e.refLatitude ?? 0,
+    longitude: e.refLongitude ?? 0,
+    distance: 0,
+    isValid: true,
+    ipAddress: 'admin-bulk',
+    userAgent: `admin-bulk:${session.user.id}`
   })
 
+  await prisma.$transaction([
+    ...toUpdate.map(e => prisma.attendance.update({
+      where: { id: invalidExistingByEmployee.get(e.id)! },
+      data: dataFor(e)
+    })),
+    ...(toCreate.length > 0 ? [prisma.attendance.createMany({
+      data: toCreate.map(dataFor)
+    })] : [])
+  ])
+
   return NextResponse.json({
-    created: toCreate.length,
-    skipped: existingIds.size,
+    created: toCreate.length + toUpdate.length,
+    skipped: validExistingIds.size,
     date,
     time,
-    message: `${type === 'CHECK_IN' ? 'Checked in' : 'Checked out'} ${toCreate.length} employee(s) on ${date}${existingIds.size > 0 ? `, skipped ${existingIds.size} already recorded` : ''}.`
+    message: `${type === 'CHECK_IN' ? 'Checked in' : 'Checked out'} ${toCreate.length + toUpdate.length} employee(s) on ${date}${validExistingIds.size > 0 ? `, skipped ${validExistingIds.size} already recorded` : ''}.`
   })
 }

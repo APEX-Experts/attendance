@@ -60,32 +60,20 @@ export async function POST(req: NextRequest) {
   }
 
   const settings = await getSettings()
+  const today = formatInTimeZone(new Date(), settings.timezone, 'yyyy-MM-dd')
   const distance = haversineDistance(employee.refLatitude, employee.refLongitude, latitude, longitude)
   const isValid = distance <= settings.allowed_radius_meters
 
   if (!isValid) {
-    const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown'
-    await prisma.attendance.create({
-      data: {
-        employeeId, type, latitude, longitude,
-        distance: Math.round(distance),
-        isValid: false, ipAddress: ip,
-        userAgent: req.headers.get('user-agent') ?? '',
-        date: formatInTimeZone(new Date(), settings.timezone, 'yyyy-MM-dd')
-      }
-    }).catch(() => {})
-
     return NextResponse.json({
-      error: `Location out of range. You are ${Math.round(distance)}m away (max ${settings.allowed_radius_meters}m).`,
+      error: `Location out of range. You are ${Math.round(distance)}m away (max ${settings.allowed_radius_meters}m). No attendance was recorded.`,
       distance: Math.round(distance),
       allowed: settings.allowed_radius_meters
     }, { status: 403 })
   }
 
-  const today = formatInTimeZone(new Date(), settings.timezone, 'yyyy-MM-dd')
-
   const existing = await prisma.attendance.findMany({
-    where: { employeeId, date: today }
+    where: { employeeId, date: today, isValid: true }
   })
 
   if (type === 'CHECK_IN') {
@@ -107,17 +95,36 @@ export async function POST(req: NextRequest) {
   }
 
   const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown'
+  const timestamp = new Date()
+  const data = {
+    employeeId, type, latitude, longitude,
+    distance: Math.round(distance),
+    isValid: true,
+    ipAddress: ip,
+    userAgent: req.headers.get('user-agent') ?? '',
+    date: today,
+    timestamp
+  }
 
-  const record = await prisma.attendance.create({
-    data: {
-      employeeId, type, latitude, longitude,
-      distance: Math.round(distance),
-      isValid: true,
-      ipAddress: ip,
-      userAgent: req.headers.get('user-agent') ?? '',
-      date: today
-    }
+  const previousAttempt = await prisma.attendance.findUnique({
+    where: { employeeId_date_type: { employeeId, date: today, type } }
   })
+  if (previousAttempt?.isValid) {
+    return NextResponse.json({ error: `Already ${type === 'CHECK_IN' ? 'checked in' : 'checked out'} today` }, { status: 409 })
+  }
+
+  const record = previousAttempt && !previousAttempt.isValid
+    ? await prisma.attendance.update({
+      where: { id: previousAttempt.id },
+      data
+    })
+    : await prisma.attendance.create({
+      data
+    })
+
+  if (!record.isValid) {
+    return NextResponse.json({ error: 'Attendance was not recorded. Please try again.' }, { status: 500 })
+  }
 
   return NextResponse.json({
     success: true,
@@ -137,7 +144,11 @@ export async function GET(req: NextRequest) {
   const today = formatInTimeZone(new Date(), settings.timezone, 'yyyy-MM-dd')
 
   const records = await prisma.attendance.findMany({
-    where: { employeeId: session.user.id, date: today },
+    where: {
+      employeeId: session.user.id,
+      date: today,
+      isValid: true
+    },
     orderBy: { timestamp: 'asc' }
   })
 

@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
   const existing = await prisma.attendance.findUnique({
     where: { employeeId_date_type: { employeeId, date, type } }
   })
-  if (existing) return NextResponse.json({ error: `${type === 'CHECK_IN' ? 'Check-in' : 'Check-out'} already exists for this day` }, { status: 409 })
+  if (existing?.isValid) return NextResponse.json({ error: `${type === 'CHECK_IN' ? 'Check-in' : 'Check-out'} already exists for this day` }, { status: 409 })
 
   if (type === 'CHECK_OUT') {
-    const hasIn = await prisma.attendance.findUnique({
-      where: { employeeId_date_type: { employeeId, date, type: 'CHECK_IN' } }
+    const hasIn = await prisma.attendance.findFirst({
+      where: { employeeId, date, type: 'CHECK_IN', isValid: true }
     })
     if (!hasIn) return NextResponse.json({ error: 'Cannot add check-out without a check-in' }, { status: 400 })
   }
@@ -41,20 +41,22 @@ export async function POST(req: NextRequest) {
   const settings = await getSettings()
   const timestamp = fromZonedTime(`${date}T${time}:00`, settings.timezone)
 
-  const record = await prisma.attendance.create({
-    data: {
-      employeeId,
-      type,
-      date,
-      timestamp,
-      latitude: employee.refLatitude ?? 0,
-      longitude: employee.refLongitude ?? 0,
-      distance: 0,
-      isValid: true,
-      ipAddress: 'admin-override',
-      userAgent: `admin:${session.user.id}`
-    }
-  })
+  const data = {
+    employeeId,
+    type,
+    date,
+    timestamp,
+    latitude: employee.refLatitude ?? 0,
+    longitude: employee.refLongitude ?? 0,
+    distance: 0,
+    isValid: true,
+    ipAddress: 'admin-override',
+    userAgent: `admin:${session.user.id}`
+  }
+
+  const record = existing
+    ? await prisma.attendance.update({ where: { id: existing.id }, data })
+    : await prisma.attendance.create({ data })
 
   return NextResponse.json(record, { status: 201 })
 }
