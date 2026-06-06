@@ -28,7 +28,11 @@ export default async function AdminDashboard() {
   const checkedInIds = new Set(todayAttendance.filter(a => a.type === 'CHECK_IN').map(a => a.employeeId))
   const checkedOutIds = new Set(todayAttendance.filter(a => a.type === 'CHECK_OUT').map(a => a.employeeId))
   const presentCount = checkedInIds.size
-  const absentCount = activeEmployees - presentCount
+
+  // getDay: 0=Sun..6=Sat, matching the numbering used in settings.work_days
+  const todayDow = Number(formatInTimeZone(new Date(), settings.timezone, 'i')) % 7
+  const isWorkDay = settings.work_days.includes(todayDow)
+  const absentCount = isWorkDay ? activeEmployees - presentCount : 0
 
   const invalidAttempts = todayFailedAttempts + legacyInvalidAttempts
 
