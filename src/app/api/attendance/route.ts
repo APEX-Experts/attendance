@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request data' }, { status: 400 })
   }
 
-  const { type, latitude, longitude } = parsed.data
+  const { type, latitude, longitude, accuracy } = parsed.data
 
   if (!isValidCoordinates(latitude, longitude)) {
     return NextResponse.json({ error: 'Invalid GPS coordinates' }, { status: 400 })
@@ -65,6 +65,22 @@ export async function POST(req: NextRequest) {
   const isValid = distance <= settings.allowed_radius_meters
 
   if (!isValid) {
+    const ip = req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown'
+    await prisma.failedAttendanceAttempt.create({
+      data: {
+        employeeId,
+        type,
+        latitude,
+        longitude,
+        distance: Math.round(distance),
+        allowedDistance: settings.allowed_radius_meters,
+        accuracy,
+        ipAddress: ip,
+        userAgent: req.headers.get('user-agent') ?? '',
+        date: today
+      }
+    }).catch(() => {})
+
     return NextResponse.json({
       error: `Location out of range. You are ${Math.round(distance)}m away (max ${settings.allowed_radius_meters}m). No attendance was recorded.`,
       distance: Math.round(distance),

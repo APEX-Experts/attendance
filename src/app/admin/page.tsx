@@ -7,14 +7,22 @@ export default async function AdminDashboard() {
   const settings = await getSettings()
   const today = formatInTimeZone(new Date(), settings.timezone, 'yyyy-MM-dd')
 
-  const [totalEmployees, activeEmployees, todayAttendance] = await Promise.all([
+  const [
+    totalEmployees,
+    activeEmployees,
+    todayAttendance,
+    todayFailedAttempts,
+    legacyInvalidAttempts
+  ] = await Promise.all([
     prisma.employee.count(),
     prisma.employee.count({ where: { isActive: true } }),
     prisma.attendance.findMany({
       where: { date: today, isValid: true },
       include: { employee: { select: { name: true, employeeCode: true } } },
       orderBy: { timestamp: 'desc' }
-    })
+    }),
+    prisma.failedAttendanceAttempt.count({ where: { date: today } }),
+    prisma.attendance.count({ where: { date: today, isValid: false } })
   ])
 
   const checkedInIds = new Set(todayAttendance.filter(a => a.type === 'CHECK_IN').map(a => a.employeeId))
@@ -22,9 +30,7 @@ export default async function AdminDashboard() {
   const presentCount = checkedInIds.size
   const absentCount = activeEmployees - presentCount
 
-  const invalidAttempts = await prisma.attendance.count({
-    where: { date: today, isValid: false }
-  })
+  const invalidAttempts = todayFailedAttempts + legacyInvalidAttempts
 
   return (
     <div>

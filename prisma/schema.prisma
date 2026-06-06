@@ -16,20 +16,21 @@ model Admin {
 }
 
 model Employee {
-  id            String       @id @default(cuid())
-  employeeCode  String       @unique
-  name          String
-  email         String       @unique
-  password      String
-  salary        Float
-  refLatitude   Float?
-  refLongitude  Float?
-  locationSet   Boolean      @default(false)
-  locationSetAt DateTime?
-  isActive      Boolean      @default(true)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  attendance    Attendance[]
+  id             String                    @id @default(cuid())
+  employeeCode   String                    @unique
+  name           String
+  email          String                    @unique
+  password       String
+  salary         Float
+  refLatitude    Float?
+  refLongitude   Float?
+  locationSet    Boolean                   @default(false)
+  locationSetAt  DateTime?
+  isActive       Boolean                   @default(true)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  attendance     Attendance[]
+  failedAttempts FailedAttendanceAttempt[]
 }
 
 model Attendance {
@@ -49,6 +50,27 @@ model Attendance {
   @@unique([employeeId, date, type])
   @@index([employeeId, date])
   @@index([date])
+}
+
+model FailedAttendanceAttempt {
+  id              String         @id @default(cuid())
+  employeeId      String
+  employee        Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type            AttendanceType
+  latitude        Float
+  longitude       Float
+  distance        Float
+  allowedDistance Float
+  accuracy        Float?
+  reason          String         @default("OUT_OF_RANGE")
+  ipAddress       String?
+  userAgent       String?
+  date            String
+  timestamp       DateTime       @default(now())
+
+  @@index([employeeId, date])
+  @@index([date])
+  @@index([timestamp])
 }
 
 enum AttendanceType {
